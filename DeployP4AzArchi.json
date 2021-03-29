@@ -1,0 +1,743 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.1",
+  "parameters":{
+
+    "IotHubName": {
+        "type": "string",
+        "defaultValue":"IOTHub-PPLSMDK"
+    },
+    "ASAName": {
+        "type": "string",
+        "defaultValue":"asapplsmdk"
+    },
+    "DPSName":{
+        "type": "string",
+        "defaultValue":"PPLSMDK-DPS"
+    },
+
+    "AksClusterName": {
+      "type": "string",
+      "defaultValue": "PPLSMDKAksCluster",
+      "metadata": {
+        "description": "The name of the Managed Cluster resource."
+      }
+    },
+    "AksNodeName":{
+      "type": "String",
+      "defaultValue":"agentpool",
+      "metadata":{
+        "description":"The Node name's will be increment with an ID if you set several AksNodeAgentCount"
+      }
+    },
+    "AksNodeOsDiskSizeGB": {
+      "type": "int",
+      "defaultValue": 32,
+      "minValue": 0,
+      "maxValue": 1023,
+      "metadata": {
+        "description": "Disk size (in GB) to provision for each of the agent pool nodes. This value ranges from 0 to 1023. Specifying 0 will apply the default disk size for that agentVMSize."
+      }
+    },
+    "ACRName": {
+      "type": "string",
+      "defaultValue": "ACRPPLSMDK",
+      "metadata": {
+        "description": "The name of the Managed Cluster resource."
+      }
+    },
+    "RoleAssigmentNameGUID": {
+      "type": "string",
+      "metadata": {
+          "description": "The unique id used in the role assignment of the kubernetes service to the container registry service. It is recommended to use the default value."
+      },
+      "defaultValue": "[newGuid()]"
+    },
+    "siteName": {
+        "type": "string",
+        "defaultValue": "[concat('FuncApp-', 'PPLSMDK')]",
+        "metadata": {
+            "description": "The name of you Web Site."
+        }
+    }
+  },//parametres dans le fichiers de parametre
+  "variables":{
+
+    "location":"[resourceGroup().location]",//Location du ressource groupe pour toutes les ressources deployées
+    "AksNodeVmSize": "Standard_B2s", //Formule la moins cher pour un node AKS
+    "AksNodeAgentCount": 1, //pour ce déploiement nous avons besoins que d'un seul noeud (en variable et non en paramettre pour éviter les erreurs humaines)
+    "AksDnsPrefix": "[concat(parameters('AksClusterName'), '-dns')]",
+    "KubernetesVersion": "1.19.7",
+    "KubernetesOrchestratorVersion": "1.19.7",
+    "owner": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Authorization/roleDefinitions/', '8e3af657-a8ff-443c-a75c-2fe8c4bcb635')]",
+    "push": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Authorization/roleDefinitions/', 'b24988ac-6180-42a0-ab88-20f7382dd24c')]",
+    "pull": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Authorization/roleDefinitions/', 'acdd72a7-3385-48ef-bd42-f606fba81ae7')]",
+    "DatabaseAccountsName":"acd-pplsmdk",
+    "ResourceGroupeLocation":"[resourceGroup().location]",
+    "IotHubSku":{
+        "name": "F1",
+        "tier": "Free",
+        "capacity": 1
+    },
+    "IotHubeventHubEndpoints": {
+        "events": {
+            "retentionTimeInDays": 1,
+            "partitionCount": 2
+        }
+    },
+    "ASASku": {
+        "name": "Standard_LRS",
+        "tier": "Standard"
+    },
+    "ASARessourceID":"[resourceId('Microsoft.Storage/storageAccounts',parameters('ASAName'))]",
+    "TelemetrieContainerName":"telemetriescontainer",
+    "hostingPlanName": "[concat('hpn-', resourceGroup().name)]",
+    "storageAccountid": "[resourceId('Microsoft.Storage/storageAccounts', parameters('ASAName'))]"
+  },
+  "resources": [
+    {
+      "name": "[parameters('ACRName')]",
+      "type": "Microsoft.ContainerRegistry/registries",
+      "apiVersion": "2019-05-01",
+      "location": "[variables('location')]",
+      "sku": {
+        "name": "Basic",
+        "tier": "Basic"
+      },
+      "properties": {
+        "adminUserEnabled": false,
+        "dataEndpointEnabled": false,
+        "publicNetworkAccess": "Enabled",
+        "networkRuleBypassOptions": "AzureServices",
+        "zoneRedundancy": "Disabled"
+      }
+    },
+    {
+      "type": "Microsoft.ContainerService/managedClusters",
+      "apiVersion": "2020-03-01",
+      "name": "[parameters('AksClusterName')]",
+      "location": "[variables('location')]",
+      "sku": {
+        "name": "Basic",
+        "tier": "Free"
+      },
+      "properties": {
+        "kubernetesVersion": "[variables('KubernetesVersion')]",
+        "dnsPrefix": "[variables('AksDnsPrefix')]",
+        "agentPoolProfiles": [
+          {
+            "name": "[parameters('AksNodeName')]",
+            "count": "[variables('AksNodeAgentCount')]",
+            "vmSize": "[variables('AksNodeVmSize')]",
+            "osDiskSizeGB": "[parameters('AksNodeOsDiskSizeGB')]",
+            "osDiskType": "Managed",
+            "maxPods": 110,
+            "type": "VirtualMachineScaleSets",
+            "availabilityZones": [
+                "1",
+                "2",
+                "3"
+            ],
+            "orchestratorVersion": "[variables('KubernetesOrchestratorVersion')]",
+            "nodeLabels": {},
+            "mode": "System",
+            "osType": "Linux"
+          }
+        ],
+        "networkProfile": {
+          "networkPlugin": "kubenet",
+          "loadBalancerSku": "Standard",
+          "loadBalancerProfile": {
+            "managedOutboundIPs": {
+              "count": 1
+            }
+          },
+          "outboundType": "loadBalancer"
+        }
+      },
+      "identity": {
+          "type": "SystemAssigned"
+      }
+    },
+    {
+      "apiVersion": "2018-09-01-preview",
+      "type": "Microsoft.ContainerRegistry/registries/providers/roleAssignments",
+      "name": "[concat(parameters('ACRName'), '/Microsoft.Authorization/', parameters('RoleAssigmentNameGUID'))]",
+      "properties": {
+          "principalId": "[reference(parameters('AksClusterName'), '2020-09-01').identityProfile.kubeletidentity.objectId]",
+          "principalType": "ServicePrincipal",
+          "roleDefinitionId": "[variables('push')]",
+          "scope": "[resourceId(resourceGroup().name,'Microsoft.ContainerRegistry/registries', parameters('ACRName'))]"
+      },
+      "dependsOn" : [
+        "[concat('Microsoft.ContainerService/managedClusters/', parameters('AksClusterName'))]",
+        "[concat('Microsoft.ContainerRegistry/registries/', parameters('ACRName'))]"
+      ]
+    },
+    {
+            "type": "Microsoft.DocumentDB/databaseAccounts",
+            "apiVersion": "2020-09-01",
+            "name": "[variables('DatabaseAccountsName')]",
+            "location": "[variables('ResourceGroupeLocation')]",
+            "tags": {
+                "defaultExperience": "Core (SQL)",
+                "hidden-cosmos-mmspecial": "",
+                "CosmosAccountType": "Non-Production"
+            },
+            "kind": "GlobalDocumentDB",
+            "properties": {
+                "publicNetworkAccess": "Enabled",
+                "enableAutomaticFailover": false,
+                "enableMultipleWriteLocations": false,
+                "isVirtualNetworkFilterEnabled": false,
+                "virtualNetworkRules": [],
+                "disableKeyBasedMetadataWriteAccess": false,
+                "enableFreeTier": true,
+                "enableAnalyticalStorage": false,
+                "databaseAccountOfferType": "Standard",
+                "consistencyPolicy": {
+                    "defaultConsistencyLevel": "Session",
+                    "maxIntervalInSeconds": 5,
+                    "maxStalenessPrefix": 100
+                },
+                "locations": [
+                    {
+                        "locationName": "[variables('ResourceGroupeLocation')]",
+                        "provisioningState": "Succeeded",
+                        "failoverPriority": 0,
+                        "isZoneRedundant": false
+                    }
+                ],
+                "cors": [],
+                "capabilities": [],
+                "ipRules": [],
+                "backupPolicy": {
+                    "type": "Periodic",
+                    "periodicModeProperties": {
+                        "backupIntervalInMinutes": 1440,
+                        "backupRetentionIntervalInHours": 48
+                    }
+                }
+            }
+        },
+        /*{
+            "type": "Microsoft.DocumentDB/databaseAccounts/notebookWorkspaces",
+            "apiVersion": "2020-09-01",
+            "name": "[concat(variables('DatabaseAccountsName'), '/default')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts', variables('DatabaseAccountsName'))]"
+            ]
+        },*/
+        {
+            "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases",
+            "apiVersion": "2020-09-01",
+            "name": "[concat(variables('DatabaseAccountsName'), '/Algeco')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts', variables('DatabaseAccountsName'))]"
+            ],
+            "properties": {
+                "resource": {
+                    "id": "Algeco"
+                }
+            }
+        },
+        {
+            "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers",
+            "apiVersion": "2020-09-01",
+            "name": "[concat(variables('DatabaseAccountsName'), '/Algeco/Modules')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases', variables('DatabaseAccountsName'), 'Algeco')]",
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts', variables('DatabaseAccountsName'))]"
+            ],
+            "properties": {
+                "resource": {
+                    "id": "Modules",
+                    "indexingPolicy": {
+                        "indexingMode": "consistent",
+                        "automatic": true,
+                        "includedPaths": [
+                            {
+                                "path": "/*"
+                            }
+                        ],
+                        "excludedPaths": [
+                            {
+                                "path": "/\"_etag\"/?"
+                            }
+                        ]
+                    },
+                    "partitionKey": {
+                        "paths": [
+                            "/UserId"
+                        ],
+                        "kind": "Hash"
+                    },
+                    "uniqueKeyPolicy": {
+                        "uniqueKeys": []
+                    },
+                    "conflictResolutionPolicy": {
+                        "mode": "LastWriterWins",
+                        "conflictResolutionPath": "/_ts"
+                    }
+                }
+            }
+        },
+        {
+            "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers",
+            "apiVersion": "2020-09-01",
+            "name": "[concat(variables('DatabaseAccountsName'), '/Algeco/Telemetries')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases', variables('DatabaseAccountsName'), 'Algeco')]",
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts', variables('DatabaseAccountsName'))]"
+            ],
+            "properties": {
+                "resource": {
+                    "id": "Telemetries",
+                    "indexingPolicy": {
+                        "indexingMode": "consistent",
+                        "automatic": true,
+                        "includedPaths": [
+                            {
+                                "path": "/*"
+                            }
+                        ],
+                        "excludedPaths": [
+                            {
+                                "path": "/\"_etag\"/?"
+                            }
+                        ]
+                    },
+                    "partitionKey": {
+                        "paths": [
+                            "/ModuleId"
+                        ],
+                        "kind": "Hash"
+                    },
+                    "uniqueKeyPolicy": {
+                        "uniqueKeys": []
+                    },
+                    "conflictResolutionPolicy": {
+                        "mode": "LastWriterWins",
+                        "conflictResolutionPath": "/_ts"
+                    }
+                }
+            }
+        },
+        {
+            "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers",
+            "apiVersion": "2020-09-01",
+            "name": "[concat(variables('DatabaseAccountsName'), '/Algeco/Users')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases', variables('DatabaseAccountsName'), 'Algeco')]",
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts', variables('DatabaseAccountsName'))]"
+            ],
+            "properties": {
+                "resource": {
+                    "id": "Users",
+                    "indexingPolicy": {
+                        "indexingMode": "consistent",
+                        "automatic": true,
+                        "includedPaths": [
+                            {
+                                "path": "/*"
+                            }
+                        ],
+                        "excludedPaths": [
+                            {
+                                "path": "/\"_etag\"/?"
+                            }
+                        ]
+                    },
+                    "partitionKey": {
+                        "paths": [
+                            "/Mail"
+                        ],
+                        "kind": "Hash"
+                    },
+                    "uniqueKeyPolicy": {
+                        "uniqueKeys": []
+                    },
+                    "conflictResolutionPolicy": {
+                        "mode": "LastWriterWins",
+                        "conflictResolutionPath": "/_ts"
+                    }
+                }
+            }
+        },
+        {
+            "name": "[parameters('ASAName')]",
+            "type": "Microsoft.Storage/storageAccounts",
+            "apiVersion": "2019-06-01",
+            "location": "[variables('ResourceGroupeLocation')]",
+            "properties": {
+                "accessTier": "Hot",
+                "minimumTlsVersion": "TLS1_2",
+                "supportsHttpsTrafficOnly": true,
+                "allowBlobPublicAccess": false,
+                "networkAcls": {
+                    "bypass": "AzureServices",
+                    "virtualNetworkRules": [],
+                    "ipRules": [],
+                    "defaultAction": "Allow"
+                }
+            },
+            "dependsOn": [],
+            "sku": {
+                "name": "[variables('ASASku').name]",
+                "tier": "[variables('ASASku').tier]"
+            },
+            "kind": "BlobStorage",
+            "tags": {}
+        },    
+        {
+            "type": "Microsoft.Storage/storageAccounts/blobServices",
+            "apiVersion": "2020-08-01-preview",
+            "name": "[concat(parameters('ASAName'), '/default')]",
+            "sku": {
+                "name": "Standard_LRS",
+                "tier": "Standard"
+            },
+            "properties": {
+                "cors": {
+                    "corsRules": []
+                },
+                "deleteRetentionPolicy": {
+                    "enabled": false
+                }
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts', parameters('ASAName'))]"
+            ]
+        },
+                {
+            "type": "Microsoft.Storage/storageAccounts/fileServices",
+            "apiVersion": "2021-01-01",
+            "name": "[concat(parameters('ASAName'), '/default')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts', parameters('ASAName'))]"
+            ],
+            "sku": {
+                "name": "Standard_LRS",
+                "tier": "Standard"
+            },
+            "properties": {
+                "protocolSettings": {
+                    "smb": {}
+                },
+                "cors": {
+                    "corsRules": []
+                },
+                "shareDeleteRetentionPolicy": {
+                    "enabled": true,
+                    "days": 7
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
+            "apiVersion": "2020-08-01-preview",
+            "name": "[concat(parameters('ASAName'),'/default/',variables('TelemetrieContainerName'))]",
+            "properties": {
+                "defaultEncryptionScope": "$account-encryption-key",
+                "denyEncryptionScopeOverride": false,
+                "publicAccess": "None"
+            }
+            ,
+            "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts/blobServices', parameters('ASAName'), 'default')]",
+                "[resourceId('Microsoft.Storage/storageAccounts', parameters('ASAName'))]"
+            ]
+        },
+        {
+            "apiVersion": "2020-07-10-preview",
+            "type": "Microsoft.Devices/IotHubs",
+            "name": "[parameters('IotHubName')]",
+            "location": "[variables('ResourceGroupeLocation')]",
+            "properties": {
+                "eventHubEndpoints": {
+                    "events": {
+                        "retentionTimeInDays": "[variables('IotHubeventHubEndpoints').events.retentionTimeInDays]",
+                        "partitionCount": "[variables('IotHubeventHubEndpoints').events.partitionCount]"
+                    }
+
+                },
+                "features": "none",
+                "routing": {
+                    "endpoints": {
+                        "serviceBusQueues": [],
+                        "serviceBusTopics": [],
+                        "eventHubs": [],
+                        "storageContainers": [
+                            {
+                                "connectionString": "[concat('DefaultEndpointsProtocol=https;','AccountName=',parameters('ASAName'),';AccountKey=',listKeys(variables('ASARessourceID'), '2019-04-01').keys[0].value,';EndpointSuffix=core.windows.net')]",
+                                "containerName": "[variables('TelemetrieContainerName')]",
+                                "fileNameFormat": "{iothub}/{partition}/{YYYY}/{MM}/{DD}/{HH}/{mm}.json",
+                                "batchFrequencyInSeconds": 60,
+                                "maxChunkSizeInBytes": 10485760,
+                                "encoding": "json",
+                                "name": "endpoint-storage",
+                                "id":"[resourceId('Microsoft.Storage/storageAccounts/blobServices/containers',parameters('ASAName'),'default',variables('TelemetrieContainerName'))]",
+                                "resourceGroup": "[variables('ResourceGroupeLocation')]"
+                            }
+                        ]
+                    },
+                    "routes": [
+                        {
+                            "name": "message-route",
+                            "source": "DeviceMessages",
+                            "condition": "true",
+                            "endpointNames": [
+                                "endpoint-storage"
+                            ],
+                            "isEnabled": true
+                        }
+                    ],
+                    "fallbackRoute": {
+                    "name": "$fallback",
+                    "source": "DeviceMessages",
+                    "condition": "true",
+                    "endpointNames": [
+                        "events"
+                    ],
+                    "isEnabled": true
+                    }
+                }
+            },
+            "sku": {
+                "name": "[variables('IotHubSku').name]",
+                "tier":"[variables('IotHubSku').tier]",
+                "capacity": "[variables('IotHubSku').capacity]"
+            },
+            "tags": {
+                "Projet-P4": "IOT"
+            },
+            "dependsOn":[
+                "[resourceId('Microsoft.Storage/storageAccounts/blobServices/containers',parameters('ASAName'),'default',variables('TelemetrieContainerName'))]",
+                "[resourceId('Microsoft.Storage/storageAccounts/blobServices', parameters('ASAName'), 'default')]",
+                "[resourceId('Microsoft.Storage/storageAccounts', parameters('ASAName'))]"
+            ]
+        },
+                {
+            "type": "Microsoft.Storage/storageAccounts/queueServices",
+            "apiVersion": "2021-01-01",
+            "name": "[concat(parameters('ASAName'), '/default')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts', parameters('ASAName'))]"
+            ],
+            "properties": {
+                "cors": {
+                    "corsRules": []
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Storage/storageAccounts/tableServices",
+            "apiVersion": "2021-01-01",
+            "name": "[concat(parameters('ASAName'), '/default')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts', parameters('ASAName'))]"
+            ],
+            "properties": {
+                "cors": {
+                    "corsRules": []
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Devices/provisioningServices",
+            "apiVersion": "2020-03-01",
+            "name": "[parameters('DPSName')]",
+            "location": "[variables('ResourceGroupeLocation')]",
+            "sku": {
+                "name": "S1",
+                "tier": "Standard",
+                "capacity": 1
+            },
+            "properties": {
+                "state": "Active",
+                "provisioningState": "Succeeded",
+                "iotHubs": [
+                    {
+                        "connectionString": "[concat('HostName=', reference(resourceId('Microsoft.Devices/IoTHubs', parameters('IotHubName')), '2020-07-10-preview').hostName, ';SharedAccessKeyName=iothubowner;SharedAccessKey=', listKeys(resourceId('Microsoft.Devices/IotHubs', parameters('IotHubName')), '2020-07-10-preview').value[0].primaryKey)]",
+                                            
+                        "location": "[variables('ResourceGroupeLocation')]"
+                    }
+                ],
+                "allocationPolicy": "Hashed"
+            },
+            "dependsOn":[
+                "[resourceId('Microsoft.Devices/IotHubs',parameters('IotHubName'))]"
+            ]
+        },
+                {
+            "type": "Microsoft.Web/sites",
+            "apiVersion": "2019-08-01",
+            "name": "[parameters('siteName')]",
+            "kind": "functionapp,linux",
+            "location": "[variables('location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Web/serverfarms', variables('hostingPlanName'))]",
+                "[resourceId('Microsoft.Storage/storageAccounts', parameters('ASAName'))]"
+            ],
+
+            "properties": {
+                "enabled": true,
+                "hostNameSslStates": [
+                    {
+                        "name": "[concat(parameters('siteName'), '.azurewebsites.net')]",
+                        "sslState": "Disabled",
+                        "hostType": "Standard"
+                    },
+                    {
+                        "name": "[concat(parameters('siteName'), '.scm.azurewebsites.net')]",
+                        "sslState": "Disabled",
+                        "hostType": "Repository"
+                    }
+                ],
+                "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('hostingPlanName'))]",
+                "reserved": false,
+                "isXenon": false,
+                "hyperV": false,
+                "siteConfig": {},
+                "scmSiteAlsoStopped": false,
+                "clientAffinityEnabled": false,
+                "clientCertEnabled": false,
+                "hostNamesDisabled": false,
+                "containerSize": 1536,
+                "dailyMemoryTimeQuota": 0,
+                "httpsOnly": false,
+                "redundancyMode": "None"
+            }
+        },
+        {
+            "type": "Microsoft.Web/serverfarms",
+            "apiVersion": "2019-08-01",
+            "name": "[variables('hostingPlanName')]",
+            "location": "[variables('location')]",
+            "kind": "linux",
+            "properties": {
+                "reserved": true
+            },
+            "sku": {
+                "Tier": "Dynamic",
+                "Name": "Y1"
+            }
+        },
+        {
+            "type": "Microsoft.Web/sites/config",
+            "apiVersion": "2018-11-01",
+            "name": "[concat(parameters('siteName'), '/web')]",
+            "location": "[variables('location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Web/sites', parameters('siteName'))]"
+            ],
+            "properties": {
+                "numberOfWorkers": 1,
+                "defaultDocuments": [
+                    "Default.htm",
+                    "Default.html",
+                    "Default.asp",
+                    "index.htm",
+                    "index.html",
+                    "iisstart.htm",
+                    "default.aspx",
+                    "index.php"
+                ],
+                "netFrameworkVersion": "v4.0",
+                "phpVersion": "5.6",
+                "requestTracingEnabled": false,
+                "remoteDebuggingEnabled": false,
+                "httpLoggingEnabled": false,
+                "logsDirectorySizeLimit": 35,
+                "detailedErrorLoggingEnabled": false,
+                "publishingUsername": "[concat('$',parameters('siteName'))]",
+                "azureStorageAccounts": {},
+                "scmType": "None",
+                "use32BitWorkerProcess": true,
+                "webSocketsEnabled": false,
+                "alwaysOn": false,
+                "managedPipelineMode": "Integrated",
+                "virtualApplications": [
+                    {
+                        "virtualPath": "/",
+                        "physicalPath": "site\\wwwroot",
+                        "preloadEnabled": false
+                    }
+                ],
+                "loadBalancing": "LeastRequests",
+                "experiments": {
+                    "rampUpRules": []
+                },
+                "autoHealEnabled": false,
+                "cors": {
+                    "allowedOrigins": [
+                        "https://functions.azure.com",
+                        "https://functions-staging.azure.com",
+                        "https://functions-next.azure.com"
+                    ],
+                    "supportCredentials": false
+                },
+                "localMySqlEnabled": false,
+                "ipSecurityRestrictions": [
+                    {
+                        "ipAddress": "Any",
+                        "action": "Allow",
+                        "priority": 1,
+                        "name": "Allow all",
+                        "description": "Allow all access"
+                    }
+                ],
+                "scmIpSecurityRestrictions": [
+                    {
+                        "ipAddress": "Any",
+                        "action": "Allow",
+                        "priority": 1,
+                        "name": "Allow all",
+                        "description": "Allow all access"
+                    }
+                ],
+                "scmIpSecurityRestrictionsUseMain": false,
+                "http20Enabled": false,
+                "minTlsVersion": "1.2",
+                "ftpsState": "AllAllowed",
+                "reservedInstanceCount": 0
+            }
+        },
+        {
+            "type": "Microsoft.Web/sites/functions",
+            "apiVersion": "2018-11-01",
+            "name": "[concat(parameters('siteName'), '/getTelemetrieData')]",
+            "location": "[variables('location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Web/sites', parameters('siteName'))]"
+            ],
+            "properties": {
+                "script_root_path_href": "https://function-mars.azurewebsites.net/admin/vfs/site/wwwroot/getTelemetrieData/",
+                "script_href": "https://function-mars.azurewebsites.net/admin/vfs/site/wwwroot/getTelemetrieData/index.js",
+                "config_href": "https://function-mars.azurewebsites.net/admin/vfs/site/wwwroot/getTelemetrieData/function.json",
+                "href": "https://function-mars.azurewebsites.net/admin/functions/getTelemetrieData",
+                "config": {},
+                "test_data": "{\n  \"temperature\": 32\n}"
+            }
+        },
+        {
+            "type": "Microsoft.Web/sites/hostNameBindings",
+            "apiVersion": "2018-11-01",
+            "name": "[concat(parameters('siteName'), '/', parameters('siteName'), '.azurewebsites.net')]",
+            "location": "[variables('location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Web/sites', parameters('siteName'))]"
+            ],
+            "properties": {
+                "siteName": "[parameters('siteName')]",
+                "hostNameType": "Verified"
+            }
+        }
+  ],
+  "outputs": {
+    "controlPlaneFQDN": {
+      "type": "string",
+      "value": "[reference(parameters('AksClusterName')).fqdn]"
+    }
+  }
+}
