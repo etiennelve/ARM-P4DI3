@@ -5,27 +5,27 @@
 
     "IotHubName": {
         "type": "string",
-        "defaultValue":"IOTHub-PPLSMDK"
+        "defaultValue":"IOTHub-PPLSMDK1"
     },
     "ASAName": {
         "type": "string",
-        "defaultValue":"asapplsmdk"
+        "defaultValue":"asapplsmdk1"
     },
     "DPSName":{
         "type": "string",
-        "defaultValue":"PPLSMDK-DPS"
+        "defaultValue":"PPLSMDK-DPS1"
     },
 
     "AksClusterName": {
       "type": "string",
-      "defaultValue": "PPLSMDKAksCluster",
+      "defaultValue": "PPLSMDKAksCluster1",
       "metadata": {
         "description": "The name of the Managed Cluster resource."
       }
     },
     "AksNodeName":{
       "type": "String",
-      "defaultValue":"agentpool",
+      "defaultValue":"agentpool1",
       "metadata":{
         "description":"The Node name's will be increment with an ID if you set several AksNodeAgentCount"
       }
@@ -41,7 +41,7 @@
     },
     "ACRName": {
       "type": "string",
-      "defaultValue": "ACRPPLSMDK",
+      "defaultValue": "ACRPPLSMDK1",
       "metadata": {
         "description": "The name of the Managed Cluster resource."
       }
@@ -55,7 +55,7 @@
     },
     "siteName": {
         "type": "string",
-        "defaultValue": "[concat('FuncApp-', 'PPLSMDK')]",
+        "defaultValue": "[concat('FuncApp-', 'PPLSMDK1')]",
         "metadata": {
             "description": "The name of you Web Site."
         }
