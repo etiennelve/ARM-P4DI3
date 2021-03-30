@@ -220,14 +220,6 @@
                 }
             }
         },
-        /*{
-            "type": "Microsoft.DocumentDB/databaseAccounts/notebookWorkspaces",
-            "apiVersion": "2020-09-01",
-            "name": "[concat(variables('DatabaseAccountsName'), '/default')]",
-            "dependsOn": [
-                "[resourceId('Microsoft.DocumentDB/databaseAccounts', variables('DatabaseAccountsName'))]"
-            ]
-        },*/
         {
             "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases",
             "apiVersion": "2020-09-01",
@@ -434,6 +426,32 @@
             }
         },
         {
+            "type": "Microsoft.Storage/storageAccounts/queueServices",
+            "apiVersion": "2021-01-01",
+            "name": "[concat(parameters('ASAName'), '/default')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts', parameters('ASAName'))]"
+            ],
+            "properties": {
+                "cors": {
+                    "corsRules": []
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Storage/storageAccounts/tableServices",
+            "apiVersion": "2021-01-01",
+            "name": "[concat(parameters('ASAName'), '/default')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts', parameters('ASAName'))]"
+            ],
+            "properties": {
+                "cors": {
+                    "corsRules": []
+                }
+            }
+        },
+        {
             "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
             "apiVersion": "2020-08-01-preview",
             "name": "[concat(parameters('ASAName'),'/default/',variables('TelemetrieContainerName'))]",
@@ -526,32 +544,6 @@
                 "[resourceId('Microsoft.Storage/storageAccounts', parameters('ASAName'))]"
             ]
         },
-                {
-            "type": "Microsoft.Storage/storageAccounts/queueServices",
-            "apiVersion": "2021-01-01",
-            "name": "[concat(parameters('ASAName'), '/default')]",
-            "dependsOn": [
-                "[resourceId('Microsoft.Storage/storageAccounts', parameters('ASAName'))]"
-            ],
-            "properties": {
-                "cors": {
-                    "corsRules": []
-                }
-            }
-        },
-        {
-            "type": "Microsoft.Storage/storageAccounts/tableServices",
-            "apiVersion": "2021-01-01",
-            "name": "[concat(parameters('ASAName'), '/default')]",
-            "dependsOn": [
-                "[resourceId('Microsoft.Storage/storageAccounts', parameters('ASAName'))]"
-            ],
-            "properties": {
-                "cors": {
-                    "corsRules": []
-                }
-            }
-        },
         {
             "type": "Microsoft.Devices/provisioningServices",
             "apiVersion": "2020-03-01",
@@ -601,6 +593,10 @@
                         "name": "[concat(parameters('siteName'), '.scm.azurewebsites.net')]",
                         "sslState": "Disabled",
                         "hostType": "Repository"
+                    },
+                    {
+                        "name": "AzureWebJobsStorage",
+                        "value": "[concat('DefaultEndpointsProtocol=https;AccountName=', parameters('ASAName'), ';AccountKey=', listKeys(variables('storageAccountid'),'2019-06-01').keys[0].value)]"
                     }
                 ],
                 "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('hostingPlanName'))]",
@@ -620,7 +616,7 @@
         },
         {
             "type": "Microsoft.Web/serverfarms",
-            "apiVersion": "2019-08-01",
+            "apiVersion": "2018-02-01",
             "name": "[variables('hostingPlanName')]",
             "location": "[variables('location')]",
             "kind": "linux",
@@ -628,8 +624,11 @@
                 "reserved": true
             },
             "sku": {
-                "Tier": "Dynamic",
-                "Name": "Y1"
+                "name": "Y1",
+                "tier": "Dynamic",
+                "size": "Y1",
+                "family": "Y",
+                "capacity": 0
             }
         },
         {
