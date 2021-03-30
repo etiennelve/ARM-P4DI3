@@ -490,6 +490,15 @@
                                 "endpoint-storage"
                             ],
                             "isEnabled": true
+                        },
+                        {
+                            "name": "message",
+                            "source": "DeviceMessages",
+                            "condition": "true",
+                            "endpointNames": [
+                                "events"
+                            ],
+                            "isEnabled": true
                         }
                     ],
                     "fallbackRoute": {
