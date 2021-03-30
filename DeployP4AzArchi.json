@@ -5,27 +5,27 @@
 
     "IotHubName": {
         "type": "string",
-        "defaultValue":"IOTHub-PPLSMDK"
+        "defaultValue":"IOTHub-PPLSMDK1"
     },
     "ASAName": {
         "type": "string",
-        "defaultValue":"asapplsmdk"
+        "defaultValue":"asapplsmdk1"
     },
     "DPSName":{
         "type": "string",
-        "defaultValue":"PPLSMDK-DPS"
+        "defaultValue":"PPLSMDK-DPS1"
     },
 
     "AksClusterName": {
       "type": "string",
-      "defaultValue": "PPLSMDKAksCluster",
+      "defaultValue": "PPLSMDKAksCluster1",
       "metadata": {
         "description": "The name of the Managed Cluster resource."
       }
     },
     "AksNodeName":{
       "type": "String",
-      "defaultValue":"agentpool",
+      "defaultValue":"agentpool1",
       "metadata":{
         "description":"The Node name's will be increment with an ID if you set several AksNodeAgentCount"
       }
@@ -41,7 +41,7 @@
     },
     "ACRName": {
       "type": "string",
-      "defaultValue": "ACRPPLSMDK",
+      "defaultValue": "ACRPPLSMDK1",
       "metadata": {
         "description": "The name of the Managed Cluster resource."
       }
@@ -55,7 +55,7 @@
     },
     "siteName": {
         "type": "string",
-        "defaultValue": "[concat('FuncApp-', 'PPLSMDK')]",
+        "defaultValue": "[concat('FuncApp-', 'PPLSMDK1')]",
         "metadata": {
             "description": "The name of you Web Site."
         }
@@ -72,7 +72,7 @@
     "owner": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Authorization/roleDefinitions/', '8e3af657-a8ff-443c-a75c-2fe8c4bcb635')]",
     "push": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Authorization/roleDefinitions/', 'b24988ac-6180-42a0-ab88-20f7382dd24c')]",
     "pull": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Authorization/roleDefinitions/', 'acdd72a7-3385-48ef-bd42-f606fba81ae7')]",
-    "DatabaseAccountsName":"acd-pplsmdk",
+    "DatabaseAccountsName":"acd-pplsmdk1",
     "ResourceGroupeLocation":"[resourceGroup().location]",
     "IotHubSku":{
         "name": "F1",
